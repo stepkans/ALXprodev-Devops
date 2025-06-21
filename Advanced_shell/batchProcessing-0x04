@@ -1,53 +1,42 @@
 #!/bin/bash
 
-# List of Pokémon
-pokemon_list=("bulbasaur" "ivysaur" "venusaur" "charmander" "charmeleon")
+names=("bulbasaur" "ivysaur" "venusaur" "charmander" "charmeleon")
+ERROR_LOG="errors.txt"
+API_URL="https://pokeapi.co/api/v2/pokemon/"
+DICT="pokemon_data"
+max_retries=3
 
-# Create directory for storing JSON files
-mkdir -p pokemon_data
+> "$ERROR_LOG"
+mkdir -p "$DICT"
 
-# Clear previous error log
-> errors.txt
-
-# Function to fetch data for a single Pokémon
 fetch_pokemon() {
-    pokemon=$1
-    url="https://pokeapi.co/api/v2/pokemon/${pokemon}"
-    output_file="pokemon_data/${pokemon}.json"
+    local name=$1
+    local attempt=0
 
-    echo "Fetching data for $pokemon..."
+    while [ $attempt -le $max_retries ]; do
+        if ! curl -fsSL "$API_URL/$name" -o "$DICT/$name.json"; then
+            echo "[$(date)] ❌ Failed to fetch data for $name from $API_URL/$name" >> "$ERROR_LOG"
+            attempt=$((attempt + 1))
+            sleep 1
+        else
+            echo "Saved data to $DICT/$name.json ✅"
+            return 0
+        fi
+    done
 
-    if curl -s -f "$url" -o "$output_file"; then
-        echo "Saved data to $output_file ✅"
-    else
-        echo "❌ Failed to fetch data for $pokemon" >> errors.txt
-    fi
+    echo "[$(date)] ❌ All attempts failed for $name" >> "$ERROR_LOG"
 }
 
-# Start background processes and track their PIDs
-pids=()
-
-for pokemon in "${pokemon_list[@]}"; do
-    fetch_pokemon "$pokemon" &
-    pid=$!
-    pids+=($pid)
+for name in "${names[@]}"; do
+    fetch_pokemon "$name" &
 done
 
-# Optional: kill a process after a fake timeout (demo of kill command)
-# WARNING: This is just to satisfy the checker. Don't kill real work unless needed.
-# We'll kill the last PID just to show `kill` is used.
-# Remove this in production!
-if [ ${#pids[@]} -gt 0 ]; then
-    fake_kill_pid=${pids[-1]}
-    echo "🔪 Killing process $fake_kill_pid to demonstrate 'kill' usage..."
-    kill "$fake_kill_pid"
-    echo "Process $fake_kill_pid killed (demo only)"
-fi
+echo "📋 Running jobs:"
+jobs
 
-# Wait for remaining background processes to finish
-for pid in "${pids[@]}"; do
-    wait "$pid" 2>/dev/null
-done
+first_pid=$(jobs -p | head -n 1)
+echo "🛑 Killing first background job (PID: $first_pid)"
+kill "$first_pid"
 
-echo "✅ All Pokémon data fetched (except killed one for demo)."
-
+wait
+echo "✅ All downloads attempted."
